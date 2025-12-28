@@ -233,19 +233,8 @@ def render_scanner():
                     st.rerun()
 
     # Main content - Unified Watchlist & Symbol Selection
-    # Clear section header showing what will be scanned
-    st.markdown("""
-    <div style="
-        background: linear-gradient(135deg, rgba(55, 66, 250, 0.1) 0%, rgba(55, 66, 250, 0.05) 100%);
-        border: 1px solid rgba(55, 66, 250, 0.2);
-        border-radius: 12px;
-        padding: 16px 20px;
-        margin-bottom: 1rem;
-    ">
-        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; margin-bottom: 8px;">
-            Symbols to Scan
-        </div>
-    """, unsafe_allow_html=True)
+    # Use a Streamlit container for proper rendering
+    st.subheader("Symbols to Scan")
 
     # Watchlist selector and symbols in one unified area
     col1, col2, col3, col4 = st.columns([2, 3, 2, 1])
@@ -281,43 +270,21 @@ def render_scanner():
                 st.rerun()
 
     with col4:
-        st.markdown("<div style='height: 4px'></div>", unsafe_allow_html=True)
         symbol_count = len(symbols) if symbols else 0
-        st.markdown(f"<div style='text-align: center; padding: 8px; background: rgba(55, 66, 250, 0.2); border-radius: 8px; font-weight: 600;'>{symbol_count}</div>", unsafe_allow_html=True)
+        st.metric(label="Count", value=symbol_count, label_visibility="collapsed")
 
-    # Display symbols as chips with remove buttons
+    # Divider before chips
+    st.divider()
+
     if symbols:
-        # Create chips with delete capability
-        chips_html = ""
-        for sym in symbols:
-            chips_html += f'''
-            <span style="
-                background: rgba(55, 66, 250, 0.15);
-                border: 1px solid rgba(55, 66, 250, 0.3);
-                padding: 6px 14px;
-                border-radius: 20px;
-                margin: 4px;
-                font-size: 0.9rem;
-                font-weight: 500;
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-            ">{sym}</span>
-            '''
-        st.markdown(f'''
-        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
-            {chips_html}
-        </div>
-        ''', unsafe_allow_html=True)
+        # Display symbols as simple text badges in columns
+        num_cols = min(len(symbols), 6)
+        chip_cols = st.columns(num_cols)
+        for i, sym in enumerate(symbols):
+            with chip_cols[i % num_cols]:
+                st.code(sym, language=None)
     else:
-        st.markdown("""
-        <div style="text-align: center; padding: 20px; opacity: 0.6; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
-            No symbols in this watchlist. Add tickers above or manage watchlists in Settings.
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Close the container
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.info("No symbols in this watchlist. Add tickers above or manage watchlists in Settings.")
 
     # Scan button - prominent, below the unified selection area
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -394,18 +361,7 @@ def render_scanner():
                 st.info("Scan complete. No opportunities found. Try adjusting filters.")
 
     elif not connected:
-        st.markdown("""
-        <div style="
-            background: rgba(128, 128, 128, 0.1);
-            border: 1px dashed rgba(128, 128, 128, 0.3);
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-        ">
-            <p style="opacity: 0.7; margin: 0;">Connect to IBKR to scan for live opportunities</p>
-        </div>
-        """, unsafe_allow_html=True)
-
+        st.info("Connect to IBKR to scan for live opportunities")
         col1, col2, col3 = st.columns([2, 1, 2])
         with col2:
             if st.button("Go to Settings", key="goto_settings_results"):
@@ -415,24 +371,14 @@ def render_scanner():
         st.info("Add symbols to your watchlist to start scanning.")
 
     # Current filter summary - compact footer with watchlist reference
+    st.divider()
     watchlist_display = st.session_state.selected_watchlist or "None"
     symbol_count = len(symbols) if symbols else 0
-    st.markdown(f"""
-    <div style="
-        margin-top: 1rem;
-        padding: 10px 14px;
-        background: rgba(128, 128, 128, 0.1);
-        border-radius: 8px;
-        font-size: 0.8rem;
-        opacity: 0.8;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    ">
-        <span><strong>{watchlist_display}</strong> ({symbol_count} symbols)</span>
-        <span>DTE {min_dte}-{max_dte} | Delta {delta_range[0]:.2f}-{delta_range[1]:.2f} | Min ${min_premium:.2f} | IV/HV > {iv_hv_threshold:.1f}</span>
-    </div>
-    """, unsafe_allow_html=True)
+    st.caption(
+        f"**{watchlist_display}** ({symbol_count} symbols) | "
+        f"DTE {min_dte}-{max_dte} | Delta {delta_range[0]:.2f}-{delta_range[1]:.2f} | "
+        f"Min ${min_premium:.2f} | IV/HV > {iv_hv_threshold:.1f}"
+    )
 
 
 # Run the page
