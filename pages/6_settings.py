@@ -29,19 +29,176 @@ def render_settings():
     settings = get_settings()
 
     # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["IBKR", "Watchlists", "Scanner", "Alerts"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["IBKR", "AI Assistant", "Watchlists", "Scanner", "Alerts"])
 
     with tab1:
         render_ibkr_settings(settings)
 
     with tab2:
-        render_watchlist_settings()
+        render_ai_settings()
 
     with tab3:
-        render_scanner_defaults(settings)
+        render_watchlist_settings()
 
     with tab4:
+        render_scanner_defaults(settings)
+
+    with tab5:
         render_alert_settings(settings)
+
+
+def render_ai_settings():
+    """Render AI Assistant settings - API key and system prompt configuration."""
+
+    # Check if API key is configured
+    saved_key = DatabaseManager.get_setting("openai_api_key")
+    has_key = bool(saved_key and len(saved_key) > 10)
+
+    # Status banner
+    if has_key:
+        # Mask the key for display
+        masked_key = saved_key[:8] + "..." + saved_key[-4:] if len(saved_key) > 12 else "***"
+        st.markdown(f"""
+        <div class="ob-banner-success">
+            <strong>OpenAI API Key Configured</strong>
+            <span class="text-muted" style="margin-left: 12px;">Key: {masked_key}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="ob-banner-warning">
+            <strong>API Key Required</strong>
+            <span class="text-muted" style="margin-left: 12px;">Add your OpenAI API key to use the AI Assistant</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # API Key input
+    st.markdown("#### OpenAI API Key")
+    st.caption("Your key is stored locally and never sent anywhere except OpenAI's API.")
+
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        new_key = st.text_input(
+            "API Key",
+            type="password",
+            placeholder="sk-...",
+            label_visibility="collapsed",
+            help="Get your key from https://platform.openai.com/api-keys"
+        )
+
+    with col2:
+        if st.button("Save Key", use_container_width=True, type="primary"):
+            if new_key and new_key.startswith("sk-"):
+                DatabaseManager.set_setting("openai_api_key", new_key)
+                st.success("API key saved!")
+                st.rerun()
+            elif new_key:
+                st.error("Invalid key format. Should start with 'sk-'")
+            else:
+                st.error("Please enter an API key")
+
+    if has_key:
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            if st.button("Test Key", use_container_width=True):
+                with st.spinner("Testing..."):
+                    try:
+                        import openai
+                        client = openai.OpenAI(api_key=saved_key)
+                        # Simple test call
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=[{"role": "user", "content": "Say 'OK' if you can hear me."}],
+                            max_tokens=10
+                        )
+                        st.success("API key is valid!")
+                    except Exception as e:
+                        st.error(f"Invalid key: {str(e)[:50]}")
+
+        with col2:
+            if st.button("Remove Key", use_container_width=True):
+                DatabaseManager.set_setting("openai_api_key", "")
+                st.rerun()
+
+    # Model selection
+    st.markdown("---")
+    st.markdown("#### Model Settings")
+
+    saved_model = DatabaseManager.get_setting("openai_model") or "gpt-4o-mini"
+    models = ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"]
+    model_descriptions = {
+        "gpt-4o-mini": "Fast & affordable - good for most queries",
+        "gpt-4o": "Most capable - better reasoning",
+        "gpt-4-turbo": "Latest GPT-4 with vision"
+    }
+
+    selected_model = st.selectbox(
+        "Model",
+        models,
+        index=models.index(saved_model) if saved_model in models else 0,
+        format_func=lambda x: f"{x} - {model_descriptions.get(x, '')}",
+        help="Choose which OpenAI model to use"
+    )
+
+    if selected_model != saved_model:
+        DatabaseManager.set_setting("openai_model", selected_model)
+        st.success(f"Model set to {selected_model}")
+
+    # System prompt customization
+    st.markdown("---")
+    st.markdown("#### System Prompt")
+    st.caption("Customize how the AI assistant behaves. It will automatically have context about your positions.")
+
+    default_prompt = """You are an expert options trading assistant for Options Buddy. You help analyze positions, suggest strategies, and provide actionable recommendations.
+
+Key behaviors:
+- Be concise and direct
+- Focus on premium selling strategies (CSP, covered calls, spreads)
+- Consider risk management and position sizing
+- When discussing specific positions, reference the user's actual data
+- Explain your reasoning for recommendations
+- Never recommend naked short calls without proper context"""
+
+    saved_prompt = DatabaseManager.get_setting("ai_system_prompt") or default_prompt
+
+    custom_prompt = st.text_area(
+        "System Prompt",
+        value=saved_prompt,
+        height=200,
+        label_visibility="collapsed",
+        help="This prompt is prepended to every conversation"
+    )
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if st.button("Save Prompt", use_container_width=True, type="primary"):
+            DatabaseManager.set_setting("ai_system_prompt", custom_prompt)
+            st.success("Prompt saved!")
+
+    with col2:
+        if st.button("Reset to Default"):
+            DatabaseManager.set_setting("ai_system_prompt", default_prompt)
+            st.rerun()
+
+    # Usage info
+    with st.expander("API Usage Info"):
+        st.markdown("""
+        **Cost Estimates (per conversation):**
+        - gpt-4o-mini: ~$0.001-0.01
+        - gpt-4o: ~$0.01-0.05
+        - gpt-4-turbo: ~$0.02-0.10
+
+        **Privacy:**
+        - Your API key is stored locally in SQLite
+        - Position data is sent to OpenAI only during conversations
+        - No data is stored by OpenAI when using the API
+
+        **Get an API Key:**
+        1. Go to https://platform.openai.com/api-keys
+        2. Create a new secret key
+        3. Copy and paste it above
+        """)
 
 
 def render_ibkr_settings(settings: Settings):

@@ -418,22 +418,69 @@ class IBKRClient:
 
     # ==================== POSITIONS (READ-ONLY) ====================
 
-    def get_positions(self) -> List[dict]:
-        """Get current positions from IBKR account."""
-        if not self.ensure_connected():
-            logger.warning("get_positions: Not connected to IBKR")
+    def get_positions(self, timeout: int = 10) -> List[dict]:
+        """
+        Get current positions from IBKR account.
+
+        Args:
+            timeout: Maximum seconds to wait for positions data
+
+        Returns:
+            List of position dictionaries
+        """
+        import time
+
+        # Verify we're actually connected
+        if self._ib is None:
+            logger.warning("get_positions: No IB instance")
             return []
 
         try:
-            # Request positions update and wait for data
+            if not self._ib.isConnected():
+                logger.warning("get_positions: IB reports not connected")
+                return []
+        except Exception as e:
+            logger.warning(f"get_positions: Connection check failed: {e}")
+            return []
+
+        try:
             logger.info("Requesting positions from IBKR...")
+
+            # Clear any stale position data first
+            try:
+                self._ib.cancelPositions()
+            except:
+                pass
+
+            # Request fresh positions
             self._ib.reqPositions()
-            self._ib.sleep(2)  # Wait for positions to be received
 
-            positions = self._ib.positions()
-            logger.info(f"Received {len(positions)} position(s) from IBKR")
+            # Wait for positions with timeout (don't use ib.sleep which can hang)
+            start_time = time.time()
+            positions = []
 
-            # Log raw position data for debugging
+            while time.time() - start_time < timeout:
+                try:
+                    # Small sleep to allow data to arrive
+                    time.sleep(0.5)
+
+                    # Check if we have positions
+                    positions = self._ib.positions()
+                    if positions:
+                        logger.info(f"Received {len(positions)} position(s)")
+                        break
+
+                    # Also check if we've waited long enough even with no positions
+                    if time.time() - start_time > 3:
+                        # After 3 seconds, if empty, it's probably really empty
+                        logger.info("No positions found after 3 seconds")
+                        break
+
+                except Exception as inner_e:
+                    logger.warning(f"Error checking positions: {inner_e}")
+                    break
+
+            # Log what we found
             for pos in positions:
                 logger.info(f"Position: {pos.contract.symbol} {pos.contract.secType} "
                            f"qty={pos.position} avgCost={pos.avgCost}")
@@ -454,7 +501,10 @@ class IBKRClient:
             ]
 
             # Cancel positions subscription
-            self._ib.cancelPositions()
+            try:
+                self._ib.cancelPositions()
+            except:
+                pass
 
             return result
         except Exception as e:

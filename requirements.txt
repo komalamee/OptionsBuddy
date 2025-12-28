@@ -29,5 +29,8 @@ pytz>=2024.1
 # Event Loop Handling
 nest_asyncio>=1.5.8
 
+# AI Assistant
+openai>=1.0.0
+
 # Testing
 pytest>=7.4.0

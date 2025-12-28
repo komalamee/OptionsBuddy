@@ -184,31 +184,44 @@ def render_add_position():
         """, unsafe_allow_html=True)
 
         if st.button("Sync Positions from IBKR", type="primary"):
-            with st.spinner("Syncing..."):
+            with st.spinner("Syncing positions (max 10 seconds)..."):
                 from data.ibkr_client import get_ibkr_client
 
-                client = get_ibkr_client()
-                ibkr_positions = client.get_positions()
+                try:
+                    client = get_ibkr_client()
 
-                if ibkr_positions:
-                    option_positions = [p for p in ibkr_positions if p.get('sec_type') == 'OPT']
-                    stock_positions = [p for p in ibkr_positions if p.get('sec_type') == 'STK']
+                    # Verify connection is actually live
+                    if not client.is_connected:
+                        st.error("Connection lost. Please reconnect in Settings.")
+                        st.session_state.ibkr_connected = False
+                        return
 
-                    # Store in session state for import
-                    st.session_state['ibkr_option_positions'] = option_positions
-                    st.session_state['ibkr_stock_positions'] = stock_positions
+                    ibkr_positions = client.get_positions(timeout=10)
 
-                    if option_positions:
-                        st.success(f"Found {len(option_positions)} option position(s)!")
+                    if ibkr_positions:
+                        option_positions = [p for p in ibkr_positions if p.get('sec_type') == 'OPT']
+                        stock_positions = [p for p in ibkr_positions if p.get('sec_type') == 'STK']
+
+                        # Store in session state for import
+                        st.session_state['ibkr_option_positions'] = option_positions
+                        st.session_state['ibkr_stock_positions'] = stock_positions
+
+                        if option_positions:
+                            st.success(f"Found {len(option_positions)} option position(s)!")
+                        else:
+                            st.info("No option positions found in IBKR.")
+
+                        if stock_positions:
+                            st.info(f"Found {len(stock_positions)} stock position(s).")
                     else:
-                        st.info("No option positions found in IBKR.")
+                        st.session_state['ibkr_option_positions'] = []
+                        st.session_state['ibkr_stock_positions'] = []
+                        st.warning("No positions found. This could mean you have no positions, or there was a connection issue.")
 
-                    if stock_positions:
-                        st.info(f"Found {len(stock_positions)} stock position(s).")
-                else:
+                except Exception as e:
+                    st.error(f"Error syncing positions: {str(e)}")
                     st.session_state['ibkr_option_positions'] = []
                     st.session_state['ibkr_stock_positions'] = []
-                    st.warning("No positions found.")
 
         # Display synced option positions with import functionality
         ibkr_options = st.session_state.get('ibkr_option_positions', [])
