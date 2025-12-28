@@ -80,17 +80,9 @@ def render_scanner():
     # Connection status in compact banner
     if not connected:
         st.markdown("""
-        <div style="
-            background: rgba(255, 165, 2, 0.15);
-            border-left: 3px solid #ffa502;
-            border-radius: 0 6px 6px 0;
-            padding: 10px 16px;
-            margin-bottom: 0.75rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        ">
-            <span>Not connected to IBKR. Configure scan parameters below, then connect to fetch live data.</span>
+        <div class="ob-banner-warning">
+            <strong>Not Connected</strong>
+            <span class="text-muted" style="margin-left: 12px;">Configure scan parameters below, then connect to fetch live data.</span>
         </div>
         """, unsafe_allow_html=True)
 

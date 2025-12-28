@@ -2,6 +2,7 @@
 
 import logging
 import asyncio
+import random
 from typing import Optional, List
 from dataclasses import dataclass
 from datetime import datetime
@@ -38,6 +39,11 @@ def _ensure_ib_insync_imported():
         _ib_insync_imported = True
 
 
+def generate_client_id() -> int:
+    """Generate a random client ID to avoid conflicts after hot-reloads."""
+    return random.randint(100, 999)
+
+
 @dataclass
 class ConnectionStatus:
     """Represents the IBKR connection status."""
@@ -69,6 +75,7 @@ class IBKRClient:
         self._ib = None
         self._connected = False
         self._connection_time: Optional[datetime] = None
+        self._active_client_id: Optional[int] = None
 
     def _get_ib(self):
         """Get or create the IB instance."""
@@ -115,7 +122,9 @@ class IBKRClient:
         host: Optional[str] = None,
         port: Optional[int] = None,
         client_id: Optional[int] = None,
-        timeout: int = 10
+        timeout: int = 10,
+        auto_retry: bool = True,
+        _retry_count: int = 0
     ) -> ConnectionStatus:
         """
         Connect to TWS or IB Gateway.
@@ -123,20 +132,37 @@ class IBKRClient:
         Args:
             host: IBKR host (default from settings)
             port: IBKR port (default from settings)
-            client_id: Client ID (default from settings)
+            client_id: Client ID (uses random by default to avoid conflicts)
             timeout: Connection timeout in seconds
+            auto_retry: If True, retry with a new client ID on conflict
 
         Returns:
             ConnectionStatus with connection details
         """
         host = host or self.settings.host
         port = port or self.settings.port
-        client_id = client_id or self.settings.client_id
+
+        # ALWAYS use a random client ID to avoid orphaned connection conflicts
+        # This is essential for Streamlit apps which frequently reload
+        if client_id is None or _retry_count == 0:
+            client_id = generate_client_id()
+            logger.info(f"Generated random client ID: {client_id}")
 
         try:
-            if self.is_connected:
-                logger.info("Already connected to IBKR")
-                return self.get_status()
+            # Clean up any existing IB instance first
+            if self._ib is not None:
+                try:
+                    logger.info("Cleaning up existing IB instance...")
+                    if self._ib.isConnected():
+                        self._ib.disconnect()
+                except Exception as cleanup_err:
+                    logger.warning(f"Cleanup warning (non-fatal): {cleanup_err}")
+                finally:
+                    self._ib = None
+
+            # Small delay to let IB Gateway release the old connection
+            import time
+            time.sleep(0.5)
 
             logger.info(f"Connecting to IBKR at {host}:{port} with client ID {client_id}")
 
@@ -156,13 +182,38 @@ class IBKRClient:
 
             self._connected = True
             self._connection_time = datetime.now()
+            self._active_client_id = client_id
 
-            logger.info("Successfully connected to IBKR")
+            logger.info(f"Successfully connected to IBKR with client ID {client_id}")
             return self.get_status()
 
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Failed to connect to IBKR: {error_msg}")
+
+            # Clean up on failure
+            self._ib = None
+
+            # Retry logic for client ID conflicts
+            max_retries = 3
+            is_conflict = any(phrase in error_msg.lower() for phrase in [
+                "client id", "already in use", "duplicate", "clientid", "connection refused"
+            ])
+
+            if auto_retry and is_conflict and _retry_count < max_retries:
+                logger.info(f"Connection issue detected, retry {_retry_count + 1}/{max_retries}...")
+                import time
+                time.sleep(1)  # Wait before retry
+
+                return self.connect(
+                    host=host,
+                    port=port,
+                    client_id=generate_client_id(),  # Always new random ID
+                    timeout=timeout,
+                    auto_retry=True,
+                    _retry_count=_retry_count + 1
+                )
+
             return ConnectionStatus(
                 is_connected=False,
                 host=host,
@@ -172,16 +223,51 @@ class IBKRClient:
             )
 
     def disconnect(self) -> None:
-        """Disconnect from IBKR."""
+        """Disconnect from IBKR and fully clean up."""
+        logger.info("Disconnecting from IBKR...")
         try:
-            if self._ib and self._ib.isConnected():
-                logger.info("Disconnecting from IBKR")
-                self._ib.disconnect()
+            if self._ib:
+                try:
+                    if self._ib.isConnected():
+                        self._ib.disconnect()
+                        logger.info("Disconnected successfully")
+                except Exception as e:
+                    logger.warning(f"Disconnect warning: {e}")
         except Exception as e:
-            logger.error(f"Error disconnecting: {e}")
+            logger.error(f"Error during disconnect: {e}")
         finally:
+            # Always clean up state regardless of disconnect success
+            self._ib = None  # Force new IB instance on next connect
             self._connected = False
             self._connection_time = None
+            self._active_client_id = None
+            logger.info("Connection state cleared")
+
+    def force_reconnect(self) -> ConnectionStatus:
+        """
+        Force a fresh reconnection using a new random client ID.
+        Use this when the previous connection was orphaned (e.g., after hot-reload).
+        """
+        logger.info("Force reconnecting with new client ID...")
+
+        # Fully reset the connection state
+        try:
+            if self._ib:
+                try:
+                    self._ib.disconnect()
+                except:
+                    pass
+        except:
+            pass
+
+        self._ib = None
+        self._connected = False
+        self._connection_time = None
+        self._active_client_id = None
+
+        # Connect with a random client ID to avoid conflicts
+        new_client_id = generate_client_id()
+        return self.connect(client_id=new_client_id, auto_retry=True)
 
     def get_status(self) -> ConnectionStatus:
         """Get the current connection status."""
@@ -335,11 +421,24 @@ class IBKRClient:
     def get_positions(self) -> List[dict]:
         """Get current positions from IBKR account."""
         if not self.ensure_connected():
+            logger.warning("get_positions: Not connected to IBKR")
             return []
 
         try:
+            # Request positions update and wait for data
+            logger.info("Requesting positions from IBKR...")
+            self._ib.reqPositions()
+            self._ib.sleep(2)  # Wait for positions to be received
+
             positions = self._ib.positions()
-            return [
+            logger.info(f"Received {len(positions)} position(s) from IBKR")
+
+            # Log raw position data for debugging
+            for pos in positions:
+                logger.info(f"Position: {pos.contract.symbol} {pos.contract.secType} "
+                           f"qty={pos.position} avgCost={pos.avgCost}")
+
+            result = [
                 {
                     'account': pos.account,
                     'symbol': pos.contract.symbol,
@@ -353,8 +452,15 @@ class IBKRClient:
                 }
                 for pos in positions
             ]
+
+            # Cancel positions subscription
+            self._ib.cancelPositions()
+
+            return result
         except Exception as e:
             logger.error(f"Error getting positions: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
 
     def get_account_summary(self) -> dict:

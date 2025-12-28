@@ -41,19 +41,11 @@ def render_dashboard():
     # Alert banner if critical positions exist
     if expiring_critical:
         st.markdown(f"""
-        <div style="
-            background: linear-gradient(135deg, #ff4757 0%, #ff6b81 100%);
-            border-radius: 10px;
-            padding: 12px 20px;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        ">
+        <div class="ob-banner-error" style="display: flex; align-items: center; gap: 12px;">
             <span style="font-size: 1.5rem;">🚨</span>
             <div>
                 <strong>{len(expiring_critical)} position(s) expiring within 3 days!</strong>
-                <span style="opacity: 0.9;"> Action required.</span>
+                <span class="text-muted"> Action required.</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -132,31 +124,17 @@ def render_dashboard():
         if expiring_critical or expiring_soon:
             for pos in expiring_critical:
                 st.markdown(f"""
-                <div style="
-                    background: rgba(255, 71, 87, 0.15);
-                    border-left: 3px solid #ff4757;
-                    border-radius: 0 6px 6px 0;
-                    padding: 8px 12px;
-                    margin-bottom: 8px;
-                    font-size: 0.85rem;
-                ">
+                <div class="ob-position-critical" style="padding: 8px 12px; font-size: 0.85rem;">
                     <strong>{pos.underlying}</strong> ${pos.strike:.0f} {pos.option_type}<br>
-                    <span style="color: #ff4757;">Expires in {pos.days_to_expiry}d</span>
+                    <span class="text-loss">Expires in {pos.days_to_expiry}d</span>
                 </div>
                 """, unsafe_allow_html=True)
 
             for pos in expiring_soon:
                 st.markdown(f"""
-                <div style="
-                    background: rgba(255, 165, 2, 0.15);
-                    border-left: 3px solid #ffa502;
-                    border-radius: 0 6px 6px 0;
-                    padding: 8px 12px;
-                    margin-bottom: 8px;
-                    font-size: 0.85rem;
-                ">
+                <div class="ob-position-warning" style="padding: 8px 12px; font-size: 0.85rem;">
                     <strong>{pos.underlying}</strong> ${pos.strike:.0f} {pos.option_type}<br>
-                    <span style="color: #ffa502;">Expires in {pos.days_to_expiry}d</span>
+                    <span class="text-warning">Expires in {pos.days_to_expiry}d</span>
                 </div>
                 """, unsafe_allow_html=True)
         else:

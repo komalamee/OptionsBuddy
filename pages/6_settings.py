@@ -47,33 +47,23 @@ def render_settings():
 def render_ibkr_settings(settings: Settings):
     """Render IBKR connection settings."""
     connected = st.session_state.get('ibkr_connected', False)
+    active_client_id = st.session_state.get('ibkr_active_client_id', None)
 
     # Connection status banner
     if connected:
         connection_time = st.session_state.get('ibkr_connection_time', '')
+        client_id_display = f" | Client ID: {active_client_id}" if active_client_id else ""
         st.markdown(f"""
-        <div style="
-            background: rgba(46, 213, 115, 0.15);
-            border-left: 3px solid #2ed573;
-            border-radius: 0 6px 6px 0;
-            padding: 12px 16px;
-            margin-bottom: 1rem;
-        ">
+        <div class="ob-banner-success">
             <strong>Connected to IBKR</strong>
-            <span style="opacity: 0.7; margin-left: 12px;">Since: {connection_time}</span>
+            <span class="text-muted" style="margin-left: 12px;">Since: {connection_time}{client_id_display}</span>
         </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
-        <div style="
-            background: rgba(255, 71, 87, 0.15);
-            border-left: 3px solid #ff4757;
-            border-radius: 0 6px 6px 0;
-            padding: 12px 16px;
-            margin-bottom: 1rem;
-        ">
+        <div class="ob-banner-error">
             <strong>Not Connected</strong>
-            <span style="opacity: 0.7; margin-left: 12px;">Configure and connect below</span>
+            <span class="text-muted" style="margin-left: 12px;">Configure and connect below</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -90,7 +80,8 @@ def render_ibkr_settings(settings: Settings):
                                 help="7497=paper, 7496=live")
 
     with col3:
-        client_id = st.number_input("Client ID", value=settings.ibkr.client_id, min_value=1, max_value=999)
+        client_id = st.number_input("Client ID", value=settings.ibkr.client_id, min_value=1, max_value=999,
+                                     help="Will use random ID if conflict detected")
 
     with col4:
         market_data_type = st.selectbox(
@@ -100,8 +91,8 @@ def render_ibkr_settings(settings: Settings):
             format_func=lambda x: {1: "Live", 2: "Frozen", 3: "Delayed", 4: "Delayed Frozen"}[x]
         )
 
-    # Connection buttons
-    col1, col2, col3 = st.columns(3)
+    # Connection buttons - now with 4 columns
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         if st.button("Connect", use_container_width=True, disabled=connected, type="primary"):
@@ -116,6 +107,7 @@ def render_ibkr_settings(settings: Settings):
                     if status.is_connected:
                         st.session_state.ibkr_connected = True
                         st.session_state.ibkr_connection_time = datetime.now().strftime("%H:%M:%S")
+                        st.session_state.ibkr_active_client_id = client._active_client_id
                         st.rerun()
                     else:
                         st.error(f"Failed: {status.error_message}")
@@ -129,11 +121,34 @@ def render_ibkr_settings(settings: Settings):
                 client.disconnect()
                 st.session_state.ibkr_connected = False
                 st.session_state.ibkr_connection_time = None
+                st.session_state.ibkr_active_client_id = None
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
     with col3:
+        if st.button("Force Reconnect", use_container_width=True,
+                     help="Use when connection is stuck after app reload"):
+            with st.spinner("Reconnecting..."):
+                try:
+                    client = get_ibkr_client()
+                    client.settings = IBKRSettings(
+                        host=host, port=port, client_id=client_id, market_data_type=market_data_type
+                    )
+                    status = client.force_reconnect()
+
+                    if status.is_connected:
+                        st.session_state.ibkr_connected = True
+                        st.session_state.ibkr_connection_time = datetime.now().strftime("%H:%M:%S")
+                        st.session_state.ibkr_active_client_id = client._active_client_id
+                        st.success(f"Reconnected with client ID {client._active_client_id}")
+                        st.rerun()
+                    else:
+                        st.error(f"Failed: {status.error_message}")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+
+    with col4:
         if st.button("Test", use_container_width=True):
             try:
                 client = get_ibkr_client()
@@ -161,7 +176,8 @@ def render_ibkr_settings(settings: Settings):
 
         **Troubleshooting:**
         - Connection refused: Ensure TWS is running
-        - Client ID in use: Try a different ID
+        - Client ID in use: Use "Force Reconnect" button (uses random ID)
+        - Stuck after code reload: Use "Force Reconnect" button
         - No data: Check market data subscriptions
         """)
 
@@ -195,8 +211,7 @@ def render_watchlist_settings():
             # Show symbols as chips
             if wl.symbols:
                 chips_html = " ".join([
-                    f'<span style="background: rgba(55, 66, 250, 0.2); padding: 3px 10px; '
-                    f'border-radius: 12px; margin-right: 6px; font-size: 0.8rem;">{s}</span>'
+                    f'<span class="ob-chip">{s}</span>'
                     for s in wl.symbols
                 ])
                 st.markdown(f'<div style="margin-bottom: 8px;">{chips_html}</div>', unsafe_allow_html=True)

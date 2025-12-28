@@ -31,14 +31,8 @@ def render_suggestions():
 
     if not positions:
         st.markdown("""
-        <div style="
-            background: rgba(128, 128, 128, 0.1);
-            border: 1px dashed rgba(128, 128, 128, 0.3);
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-        ">
-            <p style="opacity: 0.7; margin: 0;">No open positions. Add positions to get personalized suggestions.</p>
+        <div class="ob-empty-state">
+            <p style="margin: 0;">No open positions. Add positions to get personalized suggestions.</p>
         </div>
         """, unsafe_allow_html=True)
         return
@@ -73,16 +67,9 @@ def render_suggestions():
     # Critical alerts - prominent
     if expiring_critical:
         st.markdown("""
-        <div style="
-            background: linear-gradient(135deg, rgba(255, 71, 87, 0.2) 0%, rgba(255, 71, 87, 0.1) 100%);
-            border: 1px solid rgba(255, 71, 87, 0.4);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 12px;
-        ">
-            <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 8px;">
-                Action Required
-            </div>
+        <div class="ob-banner-error">
+            <strong style="font-size: 1.1rem;">Action Required</strong>
+            <span class="text-muted" style="margin-left: 12px;">Positions expiring within 3 days</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -103,14 +90,9 @@ def render_suggestions():
 
     if not connected:
         st.markdown("""
-        <div style="
-            background: rgba(255, 165, 2, 0.1);
-            border-left: 3px solid #ffa502;
-            border-radius: 0 6px 6px 0;
-            padding: 12px 16px;
-            margin-bottom: 12px;
-        ">
-            Connect to IBKR to see live roll opportunities with pricing.
+        <div class="ob-banner-warning">
+            <strong>Not Connected</strong>
+            <span class="text-muted" style="margin-left: 12px;">Connect to IBKR to see live roll opportunities with pricing.</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -123,13 +105,7 @@ def render_suggestions():
         if positions_to_roll:
             for pos in positions_to_roll:
                 st.markdown(f"""
-                <div style="
-                    background: rgba(55, 66, 250, 0.1);
-                    border-radius: 6px;
-                    padding: 10px 14px;
-                    margin-bottom: 6px;
-                    font-size: 0.9rem;
-                ">
+                <div class="ob-synced-item">
                     <strong>{pos.underlying}</strong> ${pos.strike:.0f} {pos.option_type} - {pos.days_to_expiry}d
                 </div>
                 """, unsafe_allow_html=True)
@@ -145,15 +121,9 @@ def render_suggestions():
     if assigned:
         for pos in assigned:
             st.markdown(f"""
-            <div style="
-                background: rgba(46, 213, 115, 0.1);
-                border-left: 3px solid #2ed573;
-                border-radius: 0 6px 6px 0;
-                padding: 12px 16px;
-                margin-bottom: 8px;
-            ">
+            <div class="ob-stock-ref">
                 <strong>{pos.underlying}</strong> assigned at ${pos.strike:.2f}
-                <div style="font-size: 0.85rem; margin-top: 4px; opacity: 0.9;">
+                <div class="text-muted" style="font-size: 0.85rem; margin-top: 4px;">
                     Consider selling covered calls at ${pos.strike + 5:.0f}+ for income.
                 </div>
             </div>
@@ -170,13 +140,7 @@ def render_suggestions():
         st.caption("Consider closing positions early when 50%+ profit captured to free capital.")
         for pos in profitable_candidates[:3]:  # Show top 3
             st.markdown(f"""
-            <div style="
-                background: rgba(128, 128, 128, 0.05);
-                border-radius: 6px;
-                padding: 8px 12px;
-                margin-bottom: 4px;
-                font-size: 0.85rem;
-            ">
+            <div class="ob-position-normal" style="padding: 8px 12px; font-size: 0.85rem;">
                 {pos.underlying} ${pos.strike:.0f} {pos.option_type} | {pos.days_to_expiry}d | Premium: ${pos.premium_collected:.2f}
             </div>
             """, unsafe_allow_html=True)
@@ -196,13 +160,7 @@ def render_suggestions():
         # Concentration
         if len(positions) > 0 and len(unique_symbols) < len(positions) * 0.5:
             st.markdown(f"""
-            <div style="
-                background: rgba(255, 165, 2, 0.1);
-                border-left: 3px solid #ffa502;
-                border-radius: 0 6px 6px 0;
-                padding: 10px 14px;
-                font-size: 0.85rem;
-            ">
+            <div class="ob-position-warning" style="padding: 10px 14px; font-size: 0.85rem;">
                 <strong>Concentration Warning</strong><br>
                 {len(unique_symbols)} unique symbols in {len(positions)} positions.
             </div>
@@ -231,36 +189,21 @@ def render_suggestions():
 def _render_position_suggestion(pos, level: str):
     """Render a position with suggestions."""
     if level == "critical":
-        border_color = "#ff4757"
-        bg_color = "rgba(255, 71, 87, 0.1)"
+        card_class = "ob-position-critical"
+        badge_class = "ob-badge-critical"
     else:
-        border_color = "#ffa502"
-        bg_color = "rgba(255, 165, 2, 0.1)"
+        card_class = "ob-position-warning"
+        badge_class = "ob-badge-warning"
 
     st.markdown(f"""
-    <div style="
-        background: {bg_color};
-        border-left: 3px solid {border_color};
-        border-radius: 0 8px 8px 0;
-        padding: 14px 18px;
-        margin-bottom: 10px;
-    ">
+    <div class="{card_class}" style="padding: 14px 18px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <span style="font-size: 1.1rem; font-weight: 600;">
                 {pos.underlying} ${pos.strike:.0f} {pos.option_type}
             </span>
-            <span style="
-                background: {border_color};
-                color: white;
-                padding: 2px 10px;
-                border-radius: 12px;
-                font-size: 0.75rem;
-                font-weight: 600;
-            ">
-                {pos.days_to_expiry}d
-            </span>
+            <span class="{badge_class}">{pos.days_to_expiry}d</span>
         </div>
-        <div style="font-size: 0.85rem; opacity: 0.9;">
+        <div class="text-muted" style="font-size: 0.85rem;">
             {pos.strategy_type} | Premium: ${pos.premium_collected:.2f} |
             Exp: {pos.expiry.strftime('%m/%d') if pos.expiry else 'N/A'}
         </div>

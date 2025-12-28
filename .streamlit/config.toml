@@ -1,0 +1,10 @@
+[theme]
+# Theme configuration is handled by Streamlit's built-in theme system
+# Users can toggle between light/dark in the app menu
+
+[server]
+headless = true
+runOnSave = true
+
+[browser]
+gatherUsageStats = false

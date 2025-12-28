@@ -1,15 +1,27 @@
 """
 Global styles and UI components for Options Buddy.
 Provides consistent styling, reduced padding, and trading-specific color schemes.
+Supports both light and dark modes using CSS variables.
 """
 
 import streamlit as st
 
 
 def apply_global_styles():
-    """Apply global CSS styles to reduce padding and improve layout."""
+    """Apply global CSS styles that work in both light and dark modes."""
     st.markdown("""
     <style>
+    /* CSS Variables for theme-aware colors */
+    :root {
+        --profit-color: #00a854;
+        --loss-color: #d63031;
+        --warning-color: #e67e22;
+        --info-color: #2563eb;
+        --success-color: #00a854;
+        --critical-color: #d63031;
+        --neutral-color: #666666;
+    }
+
     /* Reduce main container padding */
     .block-container {
         padding-top: 1rem !important;
@@ -19,10 +31,10 @@ def apply_global_styles():
         max-width: 100% !important;
     }
 
-    /* Compact metrics */
+    /* Compact metrics - theme aware */
     [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--secondary-background-color, rgba(128, 128, 128, 0.1));
+        border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
         border-radius: 8px;
         padding: 12px 16px;
     }
@@ -41,13 +53,13 @@ def apply_global_styles():
 
     /* Softer borders on expanders */
     [data-testid="stExpander"] {
-        border: 1px solid rgba(128, 128, 128, 0.2) !important;
+        border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2)) !important;
         border-radius: 8px !important;
     }
 
     /* Compact dataframes */
     [data-testid="stDataFrame"] {
-        border: 1px solid rgba(128, 128, 128, 0.2) !important;
+        border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2)) !important;
         border-radius: 8px !important;
     }
 
@@ -73,21 +85,12 @@ def apply_global_styles():
     /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
-        border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
     }
 
     .stTabs [data-baseweb="tab"] {
         border-radius: 6px 6px 0 0;
         padding: 8px 16px;
-    }
-
-    /* Sidebar refinements */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0e1117 0%, #1a1a2e 100%);
-    }
-
-    section[data-testid="stSidebar"] .block-container {
-        padding-top: 1rem !important;
     }
 
     /* Alert styling - softer */
@@ -110,8 +113,168 @@ def apply_global_styles():
     /* Horizontal rule */
     hr {
         margin: 1rem 0 !important;
-        border-color: rgba(128, 128, 128, 0.2) !important;
+        border-color: var(--border-color, rgba(128, 128, 128, 0.2)) !important;
     }
+
+    /* Theme-aware custom component classes */
+    .ob-card {
+        background: var(--secondary-background-color, rgba(128, 128, 128, 0.05));
+        border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+
+    .ob-banner-success {
+        background: rgba(0, 168, 84, 0.1);
+        border-left: 3px solid #00a854;
+        border-radius: 0 6px 6px 0;
+        padding: 12px 16px;
+        margin-bottom: 1rem;
+    }
+
+    .ob-banner-error {
+        background: rgba(214, 48, 49, 0.1);
+        border-left: 3px solid #d63031;
+        border-radius: 0 6px 6px 0;
+        padding: 12px 16px;
+        margin-bottom: 1rem;
+    }
+
+    .ob-banner-warning {
+        background: rgba(230, 126, 34, 0.1);
+        border-left: 3px solid #e67e22;
+        border-radius: 0 6px 6px 0;
+        padding: 12px 16px;
+        margin-bottom: 1rem;
+    }
+
+    .ob-banner-info {
+        background: rgba(37, 99, 235, 0.1);
+        border-left: 3px solid #2563eb;
+        border-radius: 0 6px 6px 0;
+        padding: 12px 16px;
+        margin-bottom: 1rem;
+    }
+
+    .ob-chip {
+        background: rgba(37, 99, 235, 0.1);
+        border: 1px solid rgba(37, 99, 235, 0.3);
+        padding: 6px 14px;
+        border-radius: 20px;
+        margin: 4px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .ob-badge-critical {
+        background: #d63031;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .ob-badge-warning {
+        background: #e67e22;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .ob-badge-info {
+        background: #2563eb;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .ob-badge-success {
+        background: #00a854;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    /* Position card with urgency */
+    .ob-position-critical {
+        background: rgba(214, 48, 49, 0.08);
+        border-left: 3px solid #d63031;
+        border-radius: 0 8px 8px 0;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+    }
+
+    .ob-position-warning {
+        background: rgba(230, 126, 34, 0.08);
+        border-left: 3px solid #e67e22;
+        border-radius: 0 8px 8px 0;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+    }
+
+    .ob-position-normal {
+        background: var(--secondary-background-color, rgba(128, 128, 128, 0.05));
+        border-left: 3px solid var(--border-color, rgba(128, 128, 128, 0.3));
+        border-radius: 0 8px 8px 0;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+    }
+
+    /* Symbol selection box */
+    .ob-symbol-box {
+        background: var(--secondary-background-color, rgba(128, 128, 128, 0.05));
+        border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 1rem;
+    }
+
+    /* Empty state */
+    .ob-empty-state {
+        background: var(--secondary-background-color, rgba(128, 128, 128, 0.05));
+        border: 1px dashed var(--border-color, rgba(128, 128, 128, 0.3));
+        border-radius: 8px;
+        padding: 40px;
+        text-align: center;
+        opacity: 0.8;
+    }
+
+    /* Synced position item */
+    .ob-synced-item {
+        background: rgba(37, 99, 235, 0.08);
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 6px;
+        font-size: 0.9rem;
+    }
+
+    /* Stock position reference */
+    .ob-stock-ref {
+        background: rgba(0, 168, 84, 0.08);
+        border-left: 3px solid #00a854;
+        border-radius: 0 6px 6px 0;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+    }
+
+    /* Text colors that work in both modes */
+    .text-profit { color: #00a854 !important; font-weight: 600; }
+    .text-loss { color: #d63031 !important; font-weight: 600; }
+    .text-warning { color: #e67e22 !important; }
+    .text-info { color: #2563eb !important; }
+    .text-muted { opacity: 0.7; }
+
     </style>
     """, unsafe_allow_html=True)
 
@@ -119,39 +282,29 @@ def apply_global_styles():
 def style_profit_loss(value: float) -> str:
     """Return styled HTML for profit/loss values."""
     if value > 0:
-        return f'<span style="color: #00d26a; font-weight: 600;">+${value:,.2f}</span>'
+        return f'<span class="text-profit">+${value:,.2f}</span>'
     elif value < 0:
-        return f'<span style="color: #ff4757; font-weight: 600;">-${abs(value):,.2f}</span>'
+        return f'<span class="text-loss">-${abs(value):,.2f}</span>'
     else:
-        return f'<span style="color: #888;">$0.00</span>'
+        return f'<span class="text-muted">$0.00</span>'
 
 
 def style_dte_badge(dte: int) -> str:
     """Return styled HTML badge for days to expiry."""
     if dte <= 3:
-        bg_color = "#ff4757"
+        badge_class = "ob-badge-critical"
         label = "CRITICAL"
     elif dte <= 7:
-        bg_color = "#ffa502"
+        badge_class = "ob-badge-warning"
         label = "EXPIRING"
     elif dte <= 14:
-        bg_color = "#3742fa"
+        badge_class = "ob-badge-info"
         label = "WATCH"
     else:
-        bg_color = "#2ed573"
+        badge_class = "ob-badge-success"
         label = "STABLE"
 
-    return f'''
-    <span style="
-        background: {bg_color};
-        color: white;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-    ">{dte}d - {label}</span>
-    '''
+    return f'<span class="{badge_class}">{dte}d - {label}</span>'
 
 
 def position_card(symbol: str, strike: float, option_type: str,
@@ -161,19 +314,21 @@ def position_card(symbol: str, strike: float, option_type: str,
     dte_badge = style_dte_badge(dte)
     pnl_html = style_profit_loss(pnl) if pnl is not None else ""
 
+    # Determine card class based on DTE
+    if dte <= 3:
+        card_class = "ob-position-critical"
+    elif dte <= 7:
+        card_class = "ob-position-warning"
+    else:
+        card_class = "ob-position-normal"
+
     return f'''
-    <div style="
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        padding: 16px;
-        margin-bottom: 12px;
-    ">
+    <div class="{card_class}">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <span style="font-size: 1.2rem; font-weight: 700;">{symbol}</span>
             {dte_badge}
         </div>
-        <div style="display: flex; gap: 16px; font-size: 0.9rem; opacity: 0.9;">
+        <div style="display: flex; gap: 16px; font-size: 0.9rem;" class="text-muted">
             <span>${strike:.0f} {option_type}</span>
             <span>|</span>
             <span>{strategy}</span>
@@ -190,18 +345,12 @@ def metric_card(label: str, value: str, delta: str = None,
     """Generate HTML for a compact metric card."""
     delta_html = ""
     if delta:
-        color = "#00d26a" if delta_color == "normal" else "#ff4757"
-        delta_html = f'<div style="color: {color}; font-size: 0.85rem;">{delta}</div>'
+        color_class = "text-profit" if delta_color == "normal" else "text-loss"
+        delta_html = f'<div class="{color_class}" style="font-size: 0.85rem;">{delta}</div>'
 
     return f'''
-    <div style="
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        padding: 16px;
-        text-align: center;
-    ">
-        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; margin-bottom: 4px;">
+    <div class="ob-card" style="text-align: center;">
+        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;" class="text-muted">
             {label}
         </div>
         <div style="font-size: 1.5rem; font-weight: 700;">
@@ -214,68 +363,46 @@ def metric_card(label: str, value: str, delta: str = None,
 
 def alert_banner(message: str, level: str = "info") -> str:
     """Generate HTML for an alert banner."""
-    colors = {
-        "critical": ("#ff4757", "#2d1f2f"),
-        "warning": ("#ffa502", "#2d2a1f"),
-        "info": ("#3742fa", "#1f2d3d"),
-        "success": ("#2ed573", "#1f2d2a")
+    class_map = {
+        "critical": "ob-banner-error",
+        "warning": "ob-banner-warning",
+        "info": "ob-banner-info",
+        "success": "ob-banner-success",
+        "error": "ob-banner-error"
     }
 
-    border_color, bg_color = colors.get(level, colors["info"])
-
-    return f'''
-    <div style="
-        background: {bg_color};
-        border-left: 4px solid {border_color};
-        border-radius: 0 8px 8px 0;
-        padding: 12px 16px;
-        margin-bottom: 12px;
-    ">
-        {message}
-    </div>
-    '''
+    banner_class = class_map.get(level, "ob-banner-info")
+    return f'<div class="{banner_class}">{message}</div>'
 
 
 def section_header(title: str, subtitle: str = None) -> None:
     """Display a styled section header."""
+    subtitle_html = f'<p style="margin: 4px 0 0 0; font-size: 0.9rem;" class="text-muted">{subtitle}</p>' if subtitle else ''
     st.markdown(f"""
     <div style="margin-bottom: 1rem;">
         <h2 style="margin: 0; font-size: 1.5rem; font-weight: 600;">{title}</h2>
-        {f'<p style="margin: 4px 0 0 0; opacity: 0.7; font-size: 0.9rem;">{subtitle}</p>' if subtitle else ''}
+        {subtitle_html}
     </div>
     """, unsafe_allow_html=True)
 
 
-def quick_action_button(label: str, icon: str = None) -> str:
-    """Generate HTML for a quick action button (for use in markdown)."""
-    icon_html = f"{icon} " if icon else ""
-    return f'''
-    <button style="
-        background: linear-gradient(135deg, #3742fa 0%, #5352ed 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 10px 20px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    ">
-        {icon_html}{label}
-    </button>
-    '''
+def empty_state(message: str) -> str:
+    """Generate HTML for an empty state."""
+    return f'<div class="ob-empty-state"><p style="margin: 0;">{message}</p></div>'
 
 
-# Color constants for trading UI
+def symbol_chip(symbol: str) -> str:
+    """Generate HTML for a symbol chip."""
+    return f'<span class="ob-chip">{symbol}</span>'
+
+
+# Color constants for trading UI - these work in both light and dark modes
 COLORS = {
-    "profit": "#00d26a",
-    "loss": "#ff4757",
-    "neutral": "#888888",
-    "critical": "#ff4757",
-    "warning": "#ffa502",
-    "info": "#3742fa",
-    "success": "#2ed573",
-    "background_dark": "#0e1117",
-    "background_card": "#1a1a2e",
-    "border_light": "rgba(255, 255, 255, 0.1)",
-    "border_medium": "rgba(128, 128, 128, 0.2)",
+    "profit": "#00a854",
+    "loss": "#d63031",
+    "neutral": "#666666",
+    "critical": "#d63031",
+    "warning": "#e67e22",
+    "info": "#2563eb",
+    "success": "#00a854",
 }

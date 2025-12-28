@@ -42,10 +42,10 @@ def render_analyzer():
 
     with col2:
         if connected:
-            st.markdown('<span style="color: #2ed573; font-size: 0.85rem;">Connected</span>',
+            st.markdown('<span class="text-profit" style="font-size: 0.85rem;">Connected</span>',
                         unsafe_allow_html=True)
         else:
-            st.markdown('<span style="color: #ffa502; font-size: 0.85rem;">Offline</span>',
+            st.markdown('<span class="text-warning" style="font-size: 0.85rem;">Offline</span>',
                         unsafe_allow_html=True)
 
     with col3:
@@ -153,13 +153,8 @@ def render_analyzer():
 
                 # Display in compact grid
                 st.markdown(f"""
-                <div style="
-                    background: rgba(55, 66, 250, 0.1);
-                    border-radius: 8px;
-                    padding: 16px;
-                    margin-bottom: 12px;
-                ">
-                    <div style="font-size: 0.8rem; opacity: 0.7; text-transform: uppercase;">Theoretical Price</div>
+                <div class="ob-card">
+                    <div class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">Theoretical Price</div>
                     <div style="font-size: 1.5rem; font-weight: 600;">${price:.2f}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -259,14 +254,8 @@ def render_analyzer():
 def _show_connect_prompt(feature: str):
     """Show compact connect to IBKR prompt."""
     st.markdown(f"""
-    <div style="
-        background: rgba(128, 128, 128, 0.1);
-        border: 1px dashed rgba(128, 128, 128, 0.3);
-        border-radius: 8px;
-        padding: 30px;
-        text-align: center;
-    ">
-        <p style="opacity: 0.7; margin: 0;">Connect to IBKR to view {feature}</p>
+    <div class="ob-empty-state">
+        <p style="margin: 0;">Connect to IBKR to view {feature}</p>
     </div>
     """, unsafe_allow_html=True)
 
