@@ -7,6 +7,8 @@ to identify mispriced options for premium selling strategies.
 
 import streamlit as st
 from pathlib import Path
+from datetime import datetime, time
+import pytz
 
 # Configure the app
 st.set_page_config(
@@ -19,6 +21,32 @@ st.set_page_config(
 # Initialize database on first run
 from database import init_database
 init_database()
+
+
+def is_market_open() -> tuple[bool, str]:
+    """
+    Check if US stock market is currently open.
+    Returns (is_open, status_message).
+    """
+    eastern = pytz.timezone('US/Eastern')
+    now = datetime.now(eastern)
+
+    # Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday
+    market_open = time(9, 30)
+    market_close = time(16, 0)
+
+    # Check if weekend
+    if now.weekday() >= 5:  # Saturday = 5, Sunday = 6
+        return False, "Market Closed (Weekend)"
+
+    current_time = now.time()
+
+    if current_time < market_open:
+        return False, "Market Closed (Pre-market)"
+    elif current_time > market_close:
+        return False, "Market Closed (After-hours)"
+    else:
+        return True, "Market Open"
 
 
 def main():
@@ -41,6 +69,14 @@ def main():
     # Check IBKR connection status
     if 'ibkr_connected' not in st.session_state:
         st.session_state.ibkr_connected = False
+
+    # Market status indicator
+    market_open, market_status = is_market_open()
+    if market_open:
+        st.sidebar.success(f"🟢 {market_status}")
+    else:
+        st.sidebar.warning(f"🟡 {market_status}")
+        st.sidebar.caption("Data may be stale or frozen")
 
     # Connection indicator in sidebar
     if st.session_state.ibkr_connected:
