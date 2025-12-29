@@ -3,6 +3,13 @@
 # Trading days per year (for annualization)
 TRADING_DAYS_PER_YEAR = 252
 
+# US Options Market Hours (Eastern Time)
+MARKET_OPEN_HOUR = 9
+MARKET_OPEN_MINUTE = 30
+MARKET_CLOSE_HOUR = 16
+MARKET_CLOSE_MINUTE = 0
+MARKET_TIMEZONE = "America/New_York"
+
 # Calendar days per year
 CALENDAR_DAYS_PER_YEAR = 365
 

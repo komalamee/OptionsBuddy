@@ -88,6 +88,22 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Stock holdings (for covered call eligibility)
+CREATE TABLE IF NOT EXISTS stock_holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    avg_cost REAL,
+    current_price REAL,
+    market_value REAL,
+    unrealized_pnl REAL,
+    ibkr_con_id INTEGER,
+    last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_holdings_symbol ON stock_holdings(symbol);
+
 -- Scan results history (for tracking and backtesting)
 CREATE TABLE IF NOT EXISTS scan_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

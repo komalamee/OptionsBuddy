@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import List, Optional, Dict, Any
 from contextlib import contextmanager
 
-from .models import Position, Trade, Watchlist, Alert, SpreadLeg
+from .models import Position, Trade, Watchlist, Alert, SpreadLeg, StockHolding
 
 
 # Database path
@@ -413,3 +413,481 @@ class DatabaseManager:
                 stats['win_rate'] = 0
 
             return stats
+
+    # ==================== P&L CALCULATIONS ====================
+
+    @staticmethod
+    def calculate_realized_pnl() -> Dict[str, Any]:
+        """Calculate realized P&L from closed positions."""
+        with get_db_connection() as conn:
+            # For options sellers: P&L = premium collected - close price (if closed)
+            # If expired worthless: P&L = full premium collected
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(SUM(
+                        CASE
+                            WHEN status = 'EXPIRED' THEN premium_collected * quantity * 100
+                            WHEN status IN ('CLOSED', 'ROLLED') THEN (premium_collected - COALESCE(close_price, 0)) * quantity * 100
+                            WHEN status = 'ASSIGNED' THEN premium_collected * quantity * 100
+                            ELSE 0
+                        END
+                    ), 0) as total_pnl,
+                    COUNT(*) as closed_count
+                FROM positions
+                WHERE status IN ('CLOSED', 'EXPIRED', 'ASSIGNED', 'ROLLED')
+                """
+            ).fetchone()
+            return {
+                'total_pnl': row['total_pnl'],
+                'closed_count': row['closed_count']
+            }
+
+    @staticmethod
+    def calculate_unrealized_pnl(current_prices: Dict[int, float] = None) -> float:
+        """
+        Calculate unrealized P&L from open positions.
+        current_prices: dict mapping position_id to current option price
+        If not provided, returns 0 (need live data for accurate unrealized P&L)
+        """
+        if not current_prices:
+            return 0.0
+
+        with get_db_connection() as conn:
+            rows = conn.execute(
+                "SELECT id, premium_collected, quantity FROM positions WHERE status = 'OPEN'"
+            ).fetchall()
+
+            total_unrealized = 0.0
+            for row in rows:
+                if row['id'] in current_prices:
+                    # P&L = (premium collected - current price) * quantity * 100
+                    pnl = (row['premium_collected'] - current_prices[row['id']]) * row['quantity'] * 100
+                    total_unrealized += pnl
+
+            return total_unrealized
+
+    @staticmethod
+    def get_pnl_by_period(period: str = 'all') -> Dict[str, Any]:
+        """
+        Get P&L broken down by time period.
+        period: 'today', 'week', 'month', 'year', 'all'
+        """
+        with get_db_connection() as conn:
+            # Build date filter
+            if period == 'today':
+                date_filter = "AND date(close_date) = date('now')"
+            elif period == 'week':
+                date_filter = "AND date(close_date) >= date('now', '-7 days')"
+            elif period == 'month':
+                date_filter = "AND date(close_date) >= date('now', '-30 days')"
+            elif period == 'year':
+                date_filter = "AND date(close_date) >= date('now', '-365 days')"
+            else:
+                date_filter = ""
+
+            row = conn.execute(
+                f"""
+                SELECT
+                    COALESCE(SUM(
+                        CASE
+                            WHEN status = 'EXPIRED' THEN premium_collected * quantity * 100
+                            WHEN status IN ('CLOSED', 'ROLLED') THEN (premium_collected - COALESCE(close_price, 0)) * quantity * 100
+                            WHEN status = 'ASSIGNED' THEN premium_collected * quantity * 100
+                            ELSE 0
+                        END
+                    ), 0) as pnl,
+                    COUNT(*) as trade_count,
+                    SUM(CASE WHEN (premium_collected - COALESCE(close_price, 0)) > 0 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN (premium_collected - COALESCE(close_price, 0)) <= 0 THEN 1 ELSE 0 END) as losses
+                FROM positions
+                WHERE status IN ('CLOSED', 'EXPIRED', 'ASSIGNED', 'ROLLED')
+                {date_filter}
+                """
+            ).fetchone()
+
+            return {
+                'pnl': row['pnl'],
+                'trade_count': row['trade_count'],
+                'wins': row['wins'] or 0,
+                'losses': row['losses'] or 0,
+                'win_rate': (row['wins'] / row['trade_count'] * 100) if row['trade_count'] > 0 else 0
+            }
+
+    @staticmethod
+    def get_pnl_by_underlying() -> List[Dict[str, Any]]:
+        """Get P&L breakdown by underlying symbol."""
+        with get_db_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    underlying,
+                    COUNT(*) as trade_count,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN status = 'EXPIRED' THEN premium_collected * quantity * 100
+                            WHEN status IN ('CLOSED', 'ROLLED') THEN (premium_collected - COALESCE(close_price, 0)) * quantity * 100
+                            WHEN status = 'ASSIGNED' THEN premium_collected * quantity * 100
+                            ELSE 0
+                        END
+                    ), 0) as pnl,
+                    SUM(CASE WHEN (premium_collected - COALESCE(close_price, 0)) > 0 THEN 1 ELSE 0 END) as wins
+                FROM positions
+                WHERE status IN ('CLOSED', 'EXPIRED', 'ASSIGNED', 'ROLLED')
+                GROUP BY underlying
+                ORDER BY pnl DESC
+                """
+            ).fetchall()
+
+            return [
+                {
+                    'underlying': row['underlying'],
+                    'trade_count': row['trade_count'],
+                    'pnl': row['pnl'],
+                    'wins': row['wins'] or 0,
+                    'win_rate': (row['wins'] / row['trade_count'] * 100) if row['trade_count'] > 0 else 0
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    def get_pnl_by_strategy() -> List[Dict[str, Any]]:
+        """Get P&L breakdown by strategy type."""
+        with get_db_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    strategy_type,
+                    COUNT(*) as trade_count,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN status = 'EXPIRED' THEN premium_collected * quantity * 100
+                            WHEN status IN ('CLOSED', 'ROLLED') THEN (premium_collected - COALESCE(close_price, 0)) * quantity * 100
+                            WHEN status = 'ASSIGNED' THEN premium_collected * quantity * 100
+                            ELSE 0
+                        END
+                    ), 0) as pnl,
+                    SUM(CASE WHEN (premium_collected - COALESCE(close_price, 0)) > 0 THEN 1 ELSE 0 END) as wins
+                FROM positions
+                WHERE status IN ('CLOSED', 'EXPIRED', 'ASSIGNED', 'ROLLED')
+                GROUP BY strategy_type
+                ORDER BY pnl DESC
+                """
+            ).fetchall()
+
+            return [
+                {
+                    'strategy_type': row['strategy_type'],
+                    'trade_count': row['trade_count'],
+                    'pnl': row['pnl'],
+                    'wins': row['wins'] or 0,
+                    'win_rate': (row['wins'] / row['trade_count'] * 100) if row['trade_count'] > 0 else 0
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    def get_closed_positions(limit: int = None) -> List[Position]:
+        """Get closed positions with optional limit."""
+        with get_db_connection() as conn:
+            query = """
+                SELECT * FROM positions
+                WHERE status IN ('CLOSED', 'EXPIRED', 'ASSIGNED', 'ROLLED')
+                ORDER BY close_date DESC
+            """
+            if limit:
+                query += f" LIMIT {limit}"
+
+            rows = conn.execute(query).fetchall()
+            return [DatabaseManager._row_to_position(row) for row in rows]
+
+    @staticmethod
+    def get_daily_pnl_history(days: int = 30) -> List[Dict[str, Any]]:
+        """Get daily P&L for the last N days."""
+        with get_db_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    date(close_date) as trade_date,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN status = 'EXPIRED' THEN premium_collected * quantity * 100
+                            WHEN status IN ('CLOSED', 'ROLLED') THEN (premium_collected - COALESCE(close_price, 0)) * quantity * 100
+                            WHEN status = 'ASSIGNED' THEN premium_collected * quantity * 100
+                            ELSE 0
+                        END
+                    ), 0) as daily_pnl,
+                    COUNT(*) as trade_count
+                FROM positions
+                WHERE status IN ('CLOSED', 'EXPIRED', 'ASSIGNED', 'ROLLED')
+                AND date(close_date) >= date('now', ?)
+                GROUP BY date(close_date)
+                ORDER BY trade_date ASC
+                """,
+                (f'-{days} days',)
+            ).fetchall()
+
+            return [
+                {
+                    'date': row['trade_date'],
+                    'pnl': row['daily_pnl'],
+                    'trade_count': row['trade_count']
+                }
+                for row in rows
+            ]
+
+    # ==================== TRADE IMPORT ====================
+
+    @staticmethod
+    def import_trades_from_csv(trades_data: List[Dict[str, Any]]) -> Dict[str, int]:
+        """
+        Import trades from CSV data.
+        Expected fields: underlying, option_type, strike, expiry, quantity,
+                        premium_collected, open_date, close_date, close_price,
+                        status, strategy_type, notes
+        Returns: {'imported': count, 'errors': count}
+        """
+        imported = 0
+        errors = 0
+
+        with get_db_connection() as conn:
+            for trade in trades_data:
+                try:
+                    # Parse dates
+                    expiry = trade.get('expiry')
+                    if isinstance(expiry, str):
+                        expiry = datetime.strptime(expiry, '%Y-%m-%d').date()
+
+                    open_date = trade.get('open_date')
+                    if isinstance(open_date, str):
+                        open_date = datetime.strptime(open_date, '%Y-%m-%d').date()
+
+                    close_date = trade.get('close_date')
+                    if isinstance(close_date, str) and close_date:
+                        close_date = datetime.strptime(close_date, '%Y-%m-%d').date()
+                    else:
+                        close_date = None
+
+                    conn.execute(
+                        """
+                        INSERT INTO positions
+                        (underlying, option_type, strike, expiry, quantity, premium_collected,
+                         open_date, close_date, close_price, status, strategy_type, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            trade.get('underlying', '').upper(),
+                            trade.get('option_type', 'PUT').upper(),
+                            float(trade.get('strike', 0)),
+                            expiry,
+                            int(trade.get('quantity', 1)),
+                            float(trade.get('premium_collected', 0)),
+                            open_date,
+                            close_date,
+                            float(trade.get('close_price', 0)) if trade.get('close_price') else None,
+                            trade.get('status', 'CLOSED').upper(),
+                            trade.get('strategy_type', 'CSP').upper(),
+                            trade.get('notes', '')
+                        )
+                    )
+                    imported += 1
+                except Exception as e:
+                    errors += 1
+                    continue
+
+            conn.commit()
+
+        return {'imported': imported, 'errors': errors}
+
+    # ==================== STOCK HOLDINGS ====================
+
+    @staticmethod
+    def upsert_stock_holding(holding: StockHolding) -> int:
+        """Insert or update a stock holding. Returns the holding ID."""
+        with get_db_connection() as conn:
+            # Check if exists
+            existing = conn.execute(
+                "SELECT id FROM stock_holdings WHERE symbol = ?",
+                (holding.symbol.upper(),)
+            ).fetchone()
+
+            if existing:
+                # Update existing
+                conn.execute(
+                    """
+                    UPDATE stock_holdings SET
+                        quantity = ?, avg_cost = ?, current_price = ?,
+                        market_value = ?, unrealized_pnl = ?, ibkr_con_id = ?,
+                        last_synced = CURRENT_TIMESTAMP
+                    WHERE symbol = ?
+                    """,
+                    (
+                        holding.quantity,
+                        holding.avg_cost,
+                        holding.current_price,
+                        holding.market_value,
+                        holding.unrealized_pnl,
+                        holding.ibkr_con_id,
+                        holding.symbol.upper()
+                    )
+                )
+                conn.commit()
+                return existing['id']
+            else:
+                # Insert new
+                cursor = conn.execute(
+                    """
+                    INSERT INTO stock_holdings
+                    (symbol, quantity, avg_cost, current_price, market_value,
+                     unrealized_pnl, ibkr_con_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        holding.symbol.upper(),
+                        holding.quantity,
+                        holding.avg_cost,
+                        holding.current_price,
+                        holding.market_value,
+                        holding.unrealized_pnl,
+                        holding.ibkr_con_id
+                    )
+                )
+                conn.commit()
+                return cursor.lastrowid
+
+    @staticmethod
+    def get_all_stock_holdings() -> List[StockHolding]:
+        """Get all stock holdings."""
+        with get_db_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM stock_holdings ORDER BY symbol ASC"
+            ).fetchall()
+
+            return [
+                StockHolding(
+                    id=row['id'],
+                    symbol=row['symbol'],
+                    quantity=row['quantity'],
+                    avg_cost=row['avg_cost'],
+                    current_price=row['current_price'],
+                    market_value=row['market_value'],
+                    unrealized_pnl=row['unrealized_pnl'],
+                    ibkr_con_id=row['ibkr_con_id'],
+                    last_synced=row['last_synced']
+                )
+                for row in rows
+            ]
+
+    @staticmethod
+    def get_stock_holding(symbol: str) -> Optional[StockHolding]:
+        """Get a stock holding by symbol."""
+        with get_db_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM stock_holdings WHERE symbol = ?",
+                (symbol.upper(),)
+            ).fetchone()
+
+            if row:
+                return StockHolding(
+                    id=row['id'],
+                    symbol=row['symbol'],
+                    quantity=row['quantity'],
+                    avg_cost=row['avg_cost'],
+                    current_price=row['current_price'],
+                    market_value=row['market_value'],
+                    unrealized_pnl=row['unrealized_pnl'],
+                    ibkr_con_id=row['ibkr_con_id'],
+                    last_synced=row['last_synced']
+                )
+            return None
+
+    @staticmethod
+    def delete_stock_holding(symbol: str) -> None:
+        """Delete a stock holding."""
+        with get_db_connection() as conn:
+            conn.execute(
+                "DELETE FROM stock_holdings WHERE symbol = ?",
+                (symbol.upper(),)
+            )
+            conn.commit()
+
+    @staticmethod
+    def clear_all_stock_holdings() -> None:
+        """Clear all stock holdings (used before full sync)."""
+        with get_db_connection() as conn:
+            conn.execute("DELETE FROM stock_holdings")
+            conn.commit()
+
+    @staticmethod
+    def get_covered_call_eligible() -> List[Dict[str, Any]]:
+        """Get stocks with enough shares for covered calls (100+ shares)."""
+        with get_db_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT symbol, quantity, avg_cost, current_price, market_value,
+                       (quantity / 100) as cc_lots,
+                       (quantity % 100) as remaining_shares
+                FROM stock_holdings
+                WHERE quantity >= 100
+                ORDER BY quantity DESC
+                """
+            ).fetchall()
+
+            return [
+                {
+                    'symbol': row['symbol'],
+                    'quantity': row['quantity'],
+                    'avg_cost': row['avg_cost'],
+                    'current_price': row['current_price'],
+                    'market_value': row['market_value'],
+                    'cc_lots': row['cc_lots'],
+                    'remaining_shares': row['remaining_shares']
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    def get_portfolio_summary() -> Dict[str, Any]:
+        """Get overall portfolio summary including stocks and options."""
+        with get_db_connection() as conn:
+            # Stock holdings summary
+            stock_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) as stock_count,
+                    COALESCE(SUM(quantity), 0) as total_shares,
+                    COALESCE(SUM(market_value), 0) as total_stock_value,
+                    COALESCE(SUM(unrealized_pnl), 0) as stock_unrealized_pnl
+                FROM stock_holdings
+                """
+            ).fetchone()
+
+            # Open options summary
+            options_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) as options_count,
+                    COALESCE(SUM(premium_collected * quantity * 100), 0) as open_premium
+                FROM positions
+                WHERE status = 'OPEN'
+                """
+            ).fetchone()
+
+            # CC eligible
+            cc_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(quantity / 100), 0) as cc_lots
+                FROM stock_holdings
+                WHERE quantity >= 100
+                """
+            ).fetchone()
+
+            return {
+                'stock_count': stock_row['stock_count'],
+                'total_shares': stock_row['total_shares'],
+                'total_stock_value': stock_row['total_stock_value'],
+                'stock_unrealized_pnl': stock_row['stock_unrealized_pnl'],
+                'open_options_count': options_row['options_count'],
+                'open_premium': options_row['open_premium'],
+                'cc_lots_available': cc_row['cc_lots']
+            }

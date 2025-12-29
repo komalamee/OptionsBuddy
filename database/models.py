@@ -93,6 +93,30 @@ class Alert:
 
 
 @dataclass
+class StockHolding:
+    """Represents a stock holding in the portfolio."""
+    id: Optional[int] = None
+    symbol: str = ""
+    quantity: int = 0
+    avg_cost: Optional[float] = None
+    current_price: Optional[float] = None
+    market_value: Optional[float] = None
+    unrealized_pnl: Optional[float] = None
+    ibkr_con_id: Optional[int] = None
+    last_synced: datetime = field(default_factory=datetime.now)
+
+    @property
+    def covered_call_lots(self) -> int:
+        """Number of covered call contracts possible (100 shares each)."""
+        return self.quantity // 100
+
+    @property
+    def remaining_shares(self) -> int:
+        """Shares not covering a full lot."""
+        return self.quantity % 100
+
+
+@dataclass
 class ScanResult:
     """Represents a scan result / opportunity."""
     id: Optional[int] = None

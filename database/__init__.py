@@ -5,4 +5,4 @@ from .db_manager import (
     get_db_connection,
     DatabaseManager
 )
-from .models import Position, Trade, Watchlist, Alert
+from .models import Position, Trade, Watchlist, Alert, StockHolding

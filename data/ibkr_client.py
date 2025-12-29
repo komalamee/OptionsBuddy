@@ -168,14 +168,27 @@ class IBKRClient:
 
             ib = self._get_ib()
 
-            # Connect with timeout
-            ib.connect(
-                host=host,
-                port=port,
-                clientId=client_id,
-                timeout=timeout,
-                readonly=True  # V1 is read-only
-            )
+            # Connect with timeout - use a shorter account timeout to avoid long waits
+            # Account updates often timeout with multiple accounts, but positions still sync
+            try:
+                ib.connect(
+                    host=host,
+                    port=port,
+                    clientId=client_id,
+                    timeout=timeout,
+                    readonly=True  # V1 is read-only
+                )
+            except asyncio.TimeoutError:
+                # Account sync may timeout but connection could still be valid
+                logger.warning("Connection sync timed out, checking if still connected...")
+                if ib.isConnected():
+                    logger.info("Connection is still valid despite timeout")
+                else:
+                    raise
+
+            # Verify connection is valid
+            if not ib.isConnected():
+                raise ConnectionError("Connection failed - not connected after connect() call")
 
             # Set market data type
             ib.reqMarketDataType(self.settings.market_data_type)
@@ -416,19 +429,36 @@ class IBKRClient:
             logger.error(f"Error getting strikes for {symbol} {expiry}: {e}")
             return []
 
+    # ==================== ACCOUNT MANAGEMENT ====================
+
+    def get_managed_accounts(self) -> List[str]:
+        """Get list of managed account IDs."""
+        if not self.ensure_connected():
+            return []
+
+        try:
+            accounts = self._ib.managedAccounts()
+            logger.info(f"Found {len(accounts)} managed account(s): {accounts}")
+            return accounts
+        except Exception as e:
+            logger.error(f"Error getting managed accounts: {e}")
+            return []
+
     # ==================== POSITIONS (READ-ONLY) ====================
 
-    def get_positions(self, timeout: int = 10) -> List[dict]:
+    def get_positions(self, account: str = None, timeout: int = 10) -> List[dict]:
         """
         Get current positions from IBKR account.
 
         Args:
+            account: Optional account ID to filter positions. If None, returns all accounts.
             timeout: Maximum seconds to wait for positions data
 
         Returns:
             List of position dictionaries
         """
         import time
+        import asyncio
 
         # Verify we're actually connected
         if self._ib is None:
@@ -446,43 +476,52 @@ class IBKRClient:
         try:
             logger.info("Requesting positions from IBKR...")
 
-            # Clear any stale position data first
-            try:
-                self._ib.cancelPositions()
-            except:
-                pass
+            # First check if positions are already cached
+            positions = self._ib.positions()
 
-            # Request fresh positions
-            self._ib.reqPositions()
-
-            # Wait for positions with timeout (don't use ib.sleep which can hang)
-            start_time = time.time()
-            positions = []
-
-            while time.time() - start_time < timeout:
+            # If no positions cached, explicitly request them
+            if not positions:
+                logger.info("No cached positions, requesting from IBKR...")
                 try:
-                    # Small sleep to allow data to arrive
-                    time.sleep(0.5)
-
-                    # Check if we have positions
+                    # Request positions - this returns a list of Position objects
+                    self._ib.reqPositions()
+                    # Give it time to receive the data
+                    self._ib.sleep(2)
                     positions = self._ib.positions()
-                    if positions:
-                        logger.info(f"Received {len(positions)} position(s)")
-                        break
+                except Exception as req_err:
+                    logger.warning(f"reqPositions failed: {req_err}")
 
-                    # Also check if we've waited long enough even with no positions
-                    if time.time() - start_time > 3:
-                        # After 3 seconds, if empty, it's probably really empty
-                        logger.info("No positions found after 3 seconds")
-                        break
+            # Still no positions? Try requesting account updates which also syncs positions
+            if not positions:
+                logger.info("Still no positions, trying account updates...")
+                try:
+                    # Get the managed accounts
+                    accounts = self._ib.managedAccounts()
+                    if accounts:
+                        account = accounts[0]
+                        logger.info(f"Requesting account updates for {account}...")
+                        self._ib.reqAccountUpdates(subscribe=True, account=account)
+                        self._ib.sleep(3)
+                        positions = self._ib.positions()
+                        # Unsubscribe to avoid continued updates
+                        self._ib.reqAccountUpdates(subscribe=False, account=account)
+                except asyncio.TimeoutError:
+                    logger.warning("Account updates timed out, continuing with cached data")
+                    positions = self._ib.positions()
+                except Exception as acc_err:
+                    logger.warning(f"Account updates failed: {acc_err}")
+                    positions = self._ib.positions()
 
-                except Exception as inner_e:
-                    logger.warning(f"Error checking positions: {inner_e}")
-                    break
+            logger.info(f"Found {len(positions)} position(s) total")
+
+            # Filter by account if specified
+            if account:
+                positions = [p for p in positions if p.account == account]
+                logger.info(f"Filtered to {len(positions)} position(s) for account {account}")
 
             # Log what we found
             for pos in positions:
-                logger.info(f"Position: {pos.contract.symbol} {pos.contract.secType} "
+                logger.info(f"Position: {pos.account} {pos.contract.symbol} {pos.contract.secType} "
                            f"qty={pos.position} avgCost={pos.avgCost}")
 
             result = [
@@ -499,12 +538,6 @@ class IBKRClient:
                 }
                 for pos in positions
             ]
-
-            # Cancel positions subscription
-            try:
-                self._ib.cancelPositions()
-            except:
-                pass
 
             return result
         except Exception as e:
